@@ -105,12 +105,34 @@ export default async function handler(req, res) {
         const userText = event.message.text;
 
         // OKなら登録
-        if (userText.toLowerCase() === "ok" && lastEvent) {
-          await createCalendarEvent(lastEvent);
-          await replyToLine(event.replyToken, "カレンダーに登録しました！");
-          lastEvent = null;
-          continue;
-        }
+      if (userText.toLowerCase() === "ok") {
+  try {
+    console.log("OK受信 lastEvent:", JSON.stringify(lastEvent, null, 2));
+
+    if (!lastEvent) {
+      await replyToLine(
+        event.replyToken,
+        "登録候補が見つかりませんでした。もう一度予定を送ってください。"
+      );
+      continue;
+    }
+
+    await createCalendarEvent(lastEvent);
+    await replyToLine(event.replyToken, "カレンダーに登録しました！");
+    lastEvent = null;
+    continue;
+  } catch (error) {
+    console.error("カレンダー登録エラー message:", error?.message);
+    console.error("カレンダー登録エラー code:", error?.code);
+    console.error("カレンダー登録エラー full:", JSON.stringify(error, null, 2));
+
+    await replyToLine(
+      event.replyToken,
+      `カレンダー登録でエラーです：${error?.message || "詳細不明"}`
+    );
+    continue;
+  }
+}
 
         // AIでイベント生成
         const eventData = await createEvent(userText);
