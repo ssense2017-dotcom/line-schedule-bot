@@ -61,13 +61,18 @@ export default async function handler(req, res) {
         try {
           const aiText = await createScheduleCandidates(userText);
           await replyToLine(event.replyToken, aiText);
-        } catch (error) {
-          console.error("AI処理エラー:", error);
-          await replyToLine(
-            event.replyToken,
-            "ごめん、AI処理でエラーが出ました。もう一回送ってみてください。"
-          );
-        }
+      } catch (error) {
+  console.error("AI処理エラー name:", error?.name);
+  console.error("AI処理エラー message:", error?.message);
+  console.error("AI処理エラー status:", error?.status);
+  console.error("AI処理エラー code:", error?.code);
+  console.error("AI処理エラー full:", JSON.stringify(error, null, 2));
+
+  await replyToLine(
+    event.replyToken,
+    `AI処理でエラーです：${error?.message || "詳細不明"}`
+  );
+}
       }
     }
 
