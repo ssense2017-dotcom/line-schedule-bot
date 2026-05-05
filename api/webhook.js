@@ -124,9 +124,10 @@ export default async function handler(req, res) {
 
         await replyToLine(
           event.replyToken,
-          `【カレンダー登録候補】
+         `【カレンダー登録候補】
 ・予定：${eventData.title}
 ・日時：${eventData.date} ${eventData.time}〜
+・場所：${eventData.location}
 
 登録する場合は「OK」と送ってください`
         );
