@@ -12,7 +12,7 @@ export default async function handler(req, res) {
       if (event.type === "message" && event.message.type === "text") {
         const userText = event.message.text;
 
-        await fetch("https://api.line.me/v2/bot/message/reply", {
+        const lineResponse = await fetch("https://api.line.me/v2/bot/message/reply", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -28,6 +28,11 @@ export default async function handler(req, res) {
             ],
           }),
         });
+
+        const resultText = await lineResponse.text();
+
+        console.log("LINE返信ステータス:", lineResponse.status);
+        console.log("LINE返信結果:", resultText);
       }
     }
 
