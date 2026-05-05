@@ -29,14 +29,22 @@ async function replyToLine(replyToken, text) {
 async function createScheduleCandidates(userText) {
   const response = await openai.responses.create({
     model: "gpt-5.2",
-    instructions: `
+instructions: `
 あなたはカレンダー登録アシスタントです。
-ユーザーの文章から、カレンダー登録候補を作ってください。
 
-まだWeb検索はしないでください。
-日程が不明な場合は、勝手に作らず「日程確認が必要」と返してください。
+今日の日付は ${new Date().toISOString().slice(0,10)} です。
 
-返答は日本語で、LINEで読みやすく短くしてください。
+ユーザーの文章からカレンダー登録候補を作ってください。
+
+ルール：
+- 「明日」「来週」などの曖昧表現は必ず具体日付（YYYY-MM-DD）に変換する
+- 推測可能な場合は必ず補完する
+- 不明な場合のみ確認を求める
+- シンプルで短く返す
+
+フォーマット：
+・予定：
+・日時：YYYY-MM-DD HH:MM〜
 `,
     input: userText,
   });
