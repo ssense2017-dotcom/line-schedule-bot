@@ -1,11 +1,23 @@
 import OpenAI from "openai";
+import { google } from "googleapis";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
+// Google Calendar設定
+const auth = new google.auth.JWT(
+  process.env.GOOGLE_CLIENT_EMAIL,
+  null,
+  process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, "\n"),
+  ["https://www.googleapis.com/auth/calendar"]
+);
+
+const calendar = google.calendar({ version: "v3", auth });
+
+// LINE返信
 async function replyToLine(replyToken, text) {
-  const lineResponse = await fetch("https://api.line.me/v2/bot/message/reply", {
+  await fetch("https://api.line.me/v2/bot/message/reply", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -13,86 +25,105 @@ async function replyToLine(replyToken, text) {
     },
     body: JSON.stringify({
       replyToken,
-      messages: [
-        {
-          type: "text",
-          text,
-        },
-      ],
+      messages: [{ type: "text", text }],
     }),
   });
-
-  console.log("LINE返信ステータス:", lineResponse.status);
-  console.log("LINE返信結果:", await lineResponse.text());
 }
 
-async function createScheduleCandidates(userText) {
+// AIで予定生成（JSON）
+async function createEvent(userText) {
   const response = await openai.responses.create({
     model: "gpt-5.2",
-instructions: `
+    instructions: `
 あなたはカレンダー登録アシスタントです。
 
-現在地は日本、タイムゾーンは Asia/Tokyo です。
 今日の日付は 2026-05-05 です。
 
-ユーザーの文章からカレンダー登録候補を作ってください。
+ユーザーの文章からイベント情報をJSONで出力してください。
 
-絶対ルール：
-- 「今日」は 2026-05-05
-- 「明日」は 2026-05-06
-- 「明後日」は 2026-05-07
-- 「来週」は今日を基準に具体日付へ変換する
-- 「明日」「来週」などを不明扱いしてはいけない
-- 日付が推測できる場合は、必ず YYYY-MM-DD で出す
-- 場所が不明なら「未定」でよい
-- 終了時刻が不明なら開始時刻だけでよい
-
-返答フォーマット：
-【カレンダー登録候補】
-・予定：
-・日時：YYYY-MM-DD HH:MM〜
-・場所：
+形式：
+{
+  "title": "",
+  "date": "YYYY-MM-DD",
+  "time": "HH:MM"
+}
 `,
     input: userText,
   });
 
-  return response.output_text;
+  const text = response.output_text;
+
+  // JSON抽出
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
 }
 
+// Googleカレンダー登録
+async function createCalendarEvent(event) {
+  const start = new Date(`${event.date}T${event.time}:00+09:00`);
+  const end = new Date(start.getTime() + 60 * 60 * 1000);
+
+  await calendar.events.insert({
+    calendarId: process.env.GOOGLE_CALENDAR_ID,
+    requestBody: {
+      summary: event.title,
+      start: {
+        dateTime: start.toISOString(),
+        timeZone: "Asia/Tokyo",
+      },
+      end: {
+        dateTime: end.toISOString(),
+        timeZone: "Asia/Tokyo",
+      },
+    },
+  });
+}
+
+// 仮保存（メモリ）
+let lastEvent = null;
+
 export default async function handler(req, res) {
-  if (req.method === "GET") {
-    return res.status(200).send("LINE Bot webhook is running");
-  }
-
   if (req.method === "POST") {
-    console.log("LINEから受信:", JSON.stringify(req.body, null, 2));
-
     const events = req.body.events || [];
 
     for (const event of events) {
       if (event.type === "message" && event.message.type === "text") {
         const userText = event.message.text;
 
-        try {
-          const aiText = await createScheduleCandidates(userText);
-          await replyToLine(event.replyToken, aiText);
-      } catch (error) {
-  console.error("AI処理エラー name:", error?.name);
-  console.error("AI処理エラー message:", error?.message);
-  console.error("AI処理エラー status:", error?.status);
-  console.error("AI処理エラー code:", error?.code);
-  console.error("AI処理エラー full:", JSON.stringify(error, null, 2));
+        // OKなら登録
+        if (userText.toLowerCase() === "ok" && lastEvent) {
+          await createCalendarEvent(lastEvent);
+          await replyToLine(event.replyToken, "カレンダーに登録しました！");
+          lastEvent = null;
+          continue;
+        }
 
-  await replyToLine(
-    event.replyToken,
-    `AI処理でエラーです：${error?.message || "詳細不明"}`
-  );
-}
+        // AIでイベント生成
+        const eventData = await createEvent(userText);
+
+        if (!eventData) {
+          await replyToLine(event.replyToken, "予定を理解できませんでした。もう一度お願いします。");
+          continue;
+        }
+
+        lastEvent = eventData;
+
+        await replyToLine(
+          event.replyToken,
+          `【カレンダー登録候補】
+・予定：${eventData.title}
+・日時：${eventData.date} ${eventData.time}〜
+
+登録する場合は「OK」と送ってください`
+        );
       }
     }
 
     return res.status(200).end();
   }
 
-  return res.status(405).send("Method Not Allowed");
+  return res.status(200).send("OK");
 }
