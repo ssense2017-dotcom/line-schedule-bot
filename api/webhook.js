@@ -34,19 +34,30 @@ async function replyToLine(replyToken, text) {
 async function createEvent(userText) {
   const response = await openai.responses.create({
     model: "gpt-5.2",
-    instructions: `
-あなたはカレンダー登録アシスタントです。
+instructions: `
+あなたはカレンダー登録用のJSON生成AIです。
 
 今日の日付は 2026-05-05 です。
+タイムゾーンは Asia/Tokyo です。
 
-ユーザーの文章からイベント情報をJSONで出力してください。
+ユーザーの文章からイベント情報を抽出してください。
+
+必ずJSONだけを返してください。
+説明文、Markdown、コードブロック、補足文は絶対に出さないでください。
 
 形式：
 {
-  "title": "",
+  "title": "予定名",
   "date": "YYYY-MM-DD",
-  "time": "HH:MM"
+  "time": "HH:MM",
+  "location": "場所。なければ未定"
 }
+
+ルール：
+- 「明日」は 2026-05-06
+- 場所がなければ "未定"
+- 終了時刻は不要
+- 分からない項目は "未定"
 `,
     input: userText,
   });
